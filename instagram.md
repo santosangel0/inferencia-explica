@@ -59,10 +59,30 @@ Pelo **Teorema de Fatoração de Fisher-Neyman**, a simples contagem das alunas 
 
 ---
 
-## Slide 6: Call to Action (Direcionando para o Artigo)
+## Slide 6: A Proporção Amostral em Ação
 
-A frequência relativa não é apenas intuitiva — ela é **matematicamente a melhor escolha**. Na inferência clássica, este estimador possui propriedades desejáveis, como ser assintoticamente não-viesado e de variância mínima.
+**Imagem:** `grafico_proporcao_exatas.png` (gerado por `grafico.R`)
 
-Quer ver a prova rigorosa de como derivamos isso usando a **Função de Log-Verossimilhança** e **Multiplicadores de Lagrange**?
+Cada ponto é uma aluna sorteada. Com $n = 5$, a proporção estimada oscila bastante. Com $n = 500$, ela já converge para o valor real da população.
+
+Isso é a **Lei dos Grandes Números** na prática: conforme a amostra cresce, o estimador se estabiliza em torno de $p$.
+
+---
+
+## Slide 7: A Pergunta que muda tudo
+
+**Mas e se não tivéssemos acesso à população?**
+
+Como saberíamos que a proporção amostral é realmente o **melhor** estimador?
+
+Afinal, qualquer um pode inventar uma fórmula que acerta na média — como mostramos no estimador ponderado. O que garante que $\hat{p} = x/n$ é matematicamente imbatível?
+
+---
+
+## Slide 8: Call to Action (Direcionando para o Artigo)
+
+Preparamos um artigo explicando a teoria por trás dessa escolha.
+
+A resposta envolve a **Função de Log-Verossimilhança**, o **Limite de Cramér-Rao** e os **Multiplicadores de Lagrange** — ferramentas que juntas provam que nenhum outro estimador não-viesado pode fazer melhor.
 
 👉 Link na bio/nos comentários para o artigo completo com as demonstrações matemáticas e códigos em R.

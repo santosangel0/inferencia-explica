@@ -85,3 +85,4 @@ ggplot(
     axis.ticks.y = element_blank()
   )
 
+ggsave("grafico_proporcao_exatas.png", width = 10, height = 6, dpi = 150, type = "cairo")
