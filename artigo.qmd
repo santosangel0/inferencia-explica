@@ -1,0 +1,551 @@
+---
+title: "Por que a Proporção Amostral é o Melhor Estimador Possível?"
+subtitle: "Uma prova com log-verossimilhança, multiplicadores de Lagrange e o limite de Cramér-Rao"
+author: "Angelo dos Santos e Geisielen Gomes"
+date: "2026-05-15"
+lang: pt
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 3
+    toc-title: "Conteúdo"
+    theme: cosmo
+    code-fold: true
+    code-summary: "Ver código"
+    fig-width: 9
+    fig-height: 5
+    fig-dpi: 150
+    df-print: paged
+---
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+library(ggplot2)
+library(dplyr)
+
+df <- read.csv("UFJF_observatorio_ingressantegrad.csv")
+df_ativa <- subset(df, SITUACAO == "ATIVO")
+df_ativa$EXATAS <- as.integer(
+  df_ativa$GRANDEAREATEXTO %in% c("CIÊNCIAS EXATAS E DA TERRA", "ENGENHARIAS")
+)
+
+p_real  <- mean(df_ativa$EXATAS)
+n_pop   <- nrow(df_ativa)
+n_exatas <- sum(df_ativa$EXATAS)
+```
+
+---
+
+## O Problema
+
+No post do Instagram, apresentamos o seguinte desafio: queremos estimar a **proporção real** ($p$) de mulheres matriculadas em cursos de Exatas e Engenharias na UFJF. Não temos acesso à população inteira — só a uma amostra aleatória de tamanho $n$.
+
+Com os dados do Observatório da UFJF, sabemos que, na população de alunos ativos, essa proporção é:
+
+```{r}
+#| echo: false
+cat(sprintf("  Alunos ativos: %d\n  Matriculados em Exatas/Engenharias: %d\n  Proporção real: p = %.4f",
+    n_pop, n_exatas, p_real))
+```
+
+Na prática, esse valor seria **desconhecido**. A questão é: dado que coletamos uma amostra e contamos $x$ alunas de Exatas em $n$ entrevistadas, como construímos o melhor estimador possível para $p$?
+
+A resposta intuitiva é a proporção amostral $\hat{p} = x/n$. Mas *"intuitivo"* não é prova. Este artigo mostra, passo a passo, que $\hat{p} = x/n$ é matematicamente imbatível.
+
+---
+
+## 1. O Modelo Probabilístico
+
+Modelamos cada aluno observado como uma variável aleatória de Bernoulli independente:
+
+$$X_i \sim \text{Bernoulli}(p), \quad i = 1, \ldots, n$$
+
+onde $X_i = 1$ se o aluno for de Exatas e $X_i = 0$ caso contrário. A probabilidade de um resultado específico é:
+
+$$P(X_i = x_i) = p^{x_i}(1 - p)^{1 - x_i}$$
+
+Como as observações são independentes, a probabilidade conjunta de toda a amostra $(x_1, \ldots, x_n)$ é:
+
+$$P(X_1 = x_1, \ldots, X_n = x_n \mid p) = \prod_{i=1}^{n} p^{x_i}(1-p)^{1-x_i} = p^x (1-p)^{n-x}$$
+
+onde $x = \sum_{i=1}^n x_i$ é a contagem total de alunos de Exatas.
+
+---
+
+## 2. A Função de Verossimilhança
+
+A **função de verossimilhança** $L(p)$ é exatamente essa probabilidade conjunta, mas encarada como função do parâmetro desconhecido $p$ — com os dados observados ($x$ e $n$) fixos:
+
+$$L(p) = p^x (1-p)^{n-x}, \quad p \in (0, 1)$$
+
+A ideia por trás da **Estimação de Máxima Verossimilhança (EMV)** é direta: escolha o valor de $p$ que torna os dados observados *mais prováveis*. Em outras palavras, maximize $L(p)$.
+
+---
+
+## 3. A Função de Log-Verossimilhança
+
+Maximizar $L(p)$ diretamente é trabalhoso por conta dos produtos. Como o logaritmo natural é uma função estritamente crescente, maximizar $L(p)$ é equivalente a maximizar:
+
+$$\ell(p) = \ln L(p) = x \ln p + (n - x) \ln(1 - p)$$
+
+O gráfico abaixo mostra $\ell(p)$ para um exemplo concreto ($x = 18$, $n = 60$, logo $\hat{p} = 0{,}30$) e para diferentes tamanhos amostrais, mantendo sempre a mesma proporção observada.
+
+```{r}
+#| label: fig-logvero
+#| fig-cap: "Função de log-verossimilhança para o modelo Bernoulli. O pico de cada curva está exatamente em p = x/n. Curvas mais concentradas indicam maior informação amostral."
+#| message: false
+
+p_grid <- seq(0.001, 0.999, length.out = 1000)
+
+# Três cenários com a mesma proporção observada (0.30) mas n diferentes
+cenarios <- list(
+  list(n = 20,  x = 6),
+  list(n = 60,  x = 18),
+  list(n = 200, x = 60),
+  list(n = 500, x = 150)
+)
+
+dados_lv <- do.call(rbind, lapply(cenarios, function(s) {
+  lv <- s$x * log(p_grid) + (s$n - s$x) * log(1 - p_grid)
+  # Normalizar pelo valor máximo para comparar as formas
+  data.frame(
+    p      = p_grid,
+    loglik = lv - max(lv),
+    rotulo = paste0("n = ", s$n, "  (x = ", s$x, ")")
+  )
+}))
+
+dados_lv$rotulo <- factor(dados_lv$rotulo, levels = unique(dados_lv$rotulo))
+
+ggplot(dados_lv, aes(x = p, y = loglik, color = rotulo)) +
+  geom_line(linewidth = 1.1) +
+  geom_vline(
+    xintercept = 0.30,
+    linetype   = "dashed",
+    color      = "black",
+    linewidth  = 0.8
+  ) +
+  annotate(
+    "text",
+    x = 0.32, y = -0.5,
+    label = "hat(p) == frac(x, n) ~ '=' ~ 0.30",
+    parse = TRUE,
+    hjust = 0, size = 3.8, color = "black"
+  ) +
+  coord_cartesian(ylim = c(-8, 0.3)) +
+  scale_color_manual(values = c("#4A90D9", "#003580", "#E05C5C", "#8B0000")) +
+  labs(
+    title  = "Função de Log-Verossimilhança — Bernoulli",
+    subtitle = "Curvas normalizadas pelo máximo (l(p) − l(p̂)) para facilitar comparação",
+    x      = "p",
+    y      = "ℓ(p) − ℓ(p̂)",
+    color  = "Tamanho amostral"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "bottom")
+```
+
+Dois pontos chamam atenção:
+
+1. **O pico está sempre em $\hat{p} = x/n$**, independente do tamanho da amostra.
+2. **A curva fica mais concentrada conforme $n$ cresce**: com amostras grandes, qualquer valor de $p$ diferente de $\hat{p}$ se torna progressivamente menos verossímil.
+
+---
+
+## 4. Encontrando o Máximo: Derivação Analítica
+
+Para encontrar o ponto de máximo, igualamos a derivada a zero:
+
+$$\frac{d\ell}{dp} = \frac{x}{p} - \frac{n - x}{1 - p} = 0$$
+
+Multiplicando ambos os lados por $p(1-p)$:
+
+$$x(1 - p) - (n - x)p = 0$$
+$$x - xp - np + xp = 0$$
+$$x = np$$
+
+Portanto:
+
+$$\boxed{\hat{p}_{\text{EMV}} = \frac{x}{n}}$$
+
+Para confirmar que é máximo (e não mínimo), a segunda derivada é:
+
+$$\frac{d^2\ell}{dp^2} = -\frac{x}{p^2} - \frac{n - x}{(1-p)^2} < 0 \quad \forall p \in (0, 1)$$
+
+Confirmado: é um máximo global.
+
+---
+
+## 5. Generalização Multinomial via Multiplicadores de Lagrange
+
+Na prática, os alunos da UFJF se distribuem em múltiplas grandes áreas, não apenas em "Exatas" e "Outras". Generalizemos para $k$ categorias.
+
+Seja $\mathbf{X} = (X_1, \ldots, X_k)$ o vetor de contagens em cada categoria, com $\sum x_i = n$. A log-verossimilhança da distribuição Multinomial, descartando a constante fatorial, é:
+
+$$\ell(\mathbf{p}) = \sum_{i=1}^{k} x_i \ln p_i$$
+
+Agora temos uma **restrição de igualdade**: as probabilidades devem somar 1,
+
+$$\sum_{i=1}^{k} p_i = 1$$
+
+Para maximizar $\ell(\mathbf{p})$ sujeito a essa restrição, usamos os **Multiplicadores de Lagrange**. Definimos a função Lagrangeana:
+
+$$\mathcal{L}(\mathbf{p}, \lambda) = \sum_{i=1}^{k} x_i \ln p_i + \lambda\!\left(1 - \sum_{i=1}^{k} p_i\right)$$
+
+**Condições de primeira ordem:**
+
+Para cada $p_i$:
+
+$$\frac{\partial \mathcal{L}}{\partial p_i} = \frac{x_i}{p_i} - \lambda = 0 \implies p_i = \frac{x_i}{\lambda}$$
+
+Para $\lambda$:
+
+$$\frac{\partial \mathcal{L}}{\partial \lambda} = 1 - \sum_{i=1}^{k} p_i = 0$$
+
+**Determinando $\lambda$:** substituindo $p_i = x_i/\lambda$ na restrição,
+
+$$\sum_{i=1}^{k} \frac{x_i}{\lambda} = 1 \implies \frac{n}{\lambda} = 1 \implies \lambda = n$$
+
+**O estimador de máxima verossimilhança** para cada categoria é, portanto:
+
+$$\boxed{\hat{p}_i = \frac{x_i}{n}}$$
+
+O EMV para a proporção de cada grande área é simplesmente a **frequência relativa observada**. A tabela abaixo mostra os EMVs para os dados completos da UFJF:
+
+```{r}
+#| label: tbl-emv
+#| tbl-cap: "EMV das proporções por grande área — alunos ativos da UFJF"
+
+df_ativa %>%
+  count(GRANDEAREATEXTO, name = "x_i") %>%
+  arrange(desc(x_i)) %>%
+  mutate(
+    `p̂ = xᵢ/n` = round(x_i / sum(x_i), 4),
+    `% da amostra` = paste0(round(100 * x_i / sum(x_i), 1), "%")
+  ) %>%
+  rename(`Grande Área` = GRANDEAREATEXTO, `Contagem (xᵢ)` = x_i)
+```
+
+---
+
+## 6. O Estimador na Prática: Convergência
+
+A Lei dos Grandes Números garante que $\hat{p} \xrightarrow{p} p$ quando $n \to \infty$. O gráfico abaixo simula isso repetidamente, mostrando como a proporção amostral se estabiliza em torno de $p_{\text{real}}$ conforme a amostra cresce.
+
+```{r}
+#| label: fig-convergencia
+#| fig-cap: "Convergência da proporção amostral. Cada linha clara representa uma simulação independente. A linha escura é a média das simulações."
+#| message: false
+
+n_vals <- seq(10, 300, by = 10)
+n_sim  <- 15
+
+set.seed(42)
+
+res_bom <- do.call(rbind, lapply(n_vals, function(n) {
+  do.call(rbind, lapply(seq_len(n_sim), function(sim) {
+    amostra <- sample(df_ativa$EXATAS, n)
+    data.frame(n = n, simulacao = factor(sim), estimativa = mean(amostra))
+  }))
+}))
+
+medias_bom <- res_bom %>%
+  group_by(n) %>%
+  summarise(media = mean(estimativa), .groups = "drop")
+
+ggplot() +
+  geom_line(
+    data  = res_bom,
+    aes(x = n, y = estimativa, group = simulacao),
+    color = "#4A90D9", alpha = 0.3, linewidth = 0.5
+  ) +
+  geom_line(
+    data      = medias_bom,
+    aes(x = n, y = media),
+    color     = "#003580", linewidth = 1.4
+  ) +
+  geom_hline(
+    yintercept = p_real, linetype = "dashed",
+    color = "black", linewidth = 0.9
+  ) +
+  annotate(
+    "text",
+    x = max(n_vals) - 10, y = p_real + 0.025,
+    label = paste0("p real = ", round(p_real, 3)),
+    hjust = 1, size = 3.5
+  ) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+  labs(
+    title    = "Proporção Amostral — Convergência para p real",
+    subtitle = paste0("Linhas claras: ", n_sim, " simulações independentes  |  Linha escura: média das simulações"),
+    x = "Tamanho da amostra (n)", y = "p̂ = x/n"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(plot.subtitle = element_text(size = 10, color = "gray40"))
+```
+
+---
+
+## 7. A Armadilha do Estimador Não-Viesado
+
+Como mencionamos no Instagram, é fácil construir outros estimadores não-viesados para $p$. Considere uma **média ponderada** que dá peso $w_1 = 0{,}9$ à primeira observação e divide o peso restante ($0{,}1$) igualmente entre as demais:
+
+$$\tilde{p} = 0{,}9\, X_1 + \frac{0{,}1}{n-1}\sum_{i=2}^{n} X_i$$
+
+É fácil verificar que $E[\tilde{p}] = p$ (não-viesado). Então, qual é o problema?
+
+**A variância não converge para zero.** Com os pesos acima:
+
+$$\text{Var}(\tilde{p}) = 0{,}81\, p(1-p) + \frac{(0{,}1)^2}{n-1}\, p(1-p) = p(1-p)\!\left[0{,}81 + \frac{0{,}01}{n-1}\right]$$
+
+Para $n$ grande, $\text{Var}(\tilde{p}) \approx 0{,}81\, p(1-p)$ — **uma constante positiva, independente de $n$!**
+
+Em contraste, $\text{Var}(\hat{p}) = p(1-p)/n \to 0$.
+
+O gráfico abaixo coloca os dois estimadores lado a lado:
+
+```{r}
+#| label: fig-comparacao
+#| fig-cap: "Comparação entre o estimador bom (proporção amostral) e o estimador ruim (ponderado). Ambos são não-viesados, mas apenas o bom converge para p."
+#| message: false
+#| fig-height: 7
+
+estimador_ruim <- function(amostra) {
+  n <- length(amostra)
+  pesos <- c(0.9, rep(0.1 / (n - 1), n - 1))
+  sum(pesos * amostra)
+}
+
+set.seed(42)
+
+res_ruim <- do.call(rbind, lapply(n_vals, function(n) {
+  do.call(rbind, lapply(seq_len(n_sim), function(sim) {
+    amostra <- sample(df_ativa$EXATAS, n)
+    data.frame(n = n, simulacao = factor(sim), estimativa = estimador_ruim(amostra))
+  }))
+}))
+
+medias_ruim <- res_ruim %>%
+  group_by(n) %>%
+  summarise(media = mean(estimativa), .groups = "drop")
+
+# Combinando
+res_bom$tipo   <- "Bom: p̂ = x/n"
+res_ruim$tipo  <- "Ruim: ponderado (w₁ = 0.9)"
+medias_bom$tipo  <- "Bom: p̂ = x/n"
+medias_ruim$tipo <- "Ruim: ponderado (w₁ = 0.9)"
+
+res_all    <- bind_rows(res_bom, res_ruim)
+medias_all <- bind_rows(medias_bom, medias_ruim)
+
+cores_linha  <- c("Bom: p̂ = x/n" = "#4A90D9",  "Ruim: ponderado (w₁ = 0.9)" = "#E05C5C")
+cores_media  <- c("Bom: p̂ = x/n" = "#003580",  "Ruim: ponderado (w₁ = 0.9)" = "#8B0000")
+
+ggplot() +
+  geom_line(
+    data  = res_all,
+    aes(x = n, y = estimativa, group = simulacao, color = tipo),
+    alpha = 0.25, linewidth = 0.5
+  ) +
+  geom_line(
+    data = medias_all,
+    aes(x = n, y = media, color = tipo),
+    linewidth = 1.4
+  ) +
+  geom_hline(
+    yintercept = p_real, linetype = "dashed",
+    color = "black", linewidth = 0.8
+  ) +
+  annotate(
+    "text",
+    x = max(n_vals) - 10, y = p_real + 0.03,
+    label = paste0("p real = ", round(p_real, 3)),
+    hjust = 1, size = 3.5
+  ) +
+  facet_wrap(~tipo, ncol = 1) +
+  scale_color_manual(values = c(cores_linha, cores_media)) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  labs(
+    title    = "Estimador Bom vs. Estimador Ruim",
+    subtitle = "Ambos são não-viesados — só o bom tem variância que vai a zero",
+    x = "Tamanho da amostra (n)", y = "Estimativa de p",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    legend.position  = "none",
+    strip.text       = element_text(size = 11, face = "bold"),
+    plot.subtitle    = element_text(size = 10, color = "gray40")
+  )
+```
+
+O estimador ponderado **oscila indefinidamente** em torno de $p_{\text{real}}$, sem nunca se estabilizar. Não-viesado não é suficiente para garantir utilidade prática.
+
+### Comparação analítica das variâncias
+
+```{r}
+#| label: fig-variancia
+#| fig-cap: "Variância teórica de cada estimador. A proporção amostral converge para zero; o estimador ponderado estabiliza em ~0.81·p(1-p)."
+
+p0 <- p_real
+p_grid_var <- seq(10, 300, by = 5)
+
+var_bom  <- p0 * (1 - p0) / p_grid_var
+var_ruim <- p0 * (1 - p0) * (0.81 + 0.01 / (p_grid_var - 1))
+
+df_var <- data.frame(
+  n        = rep(p_grid_var, 2),
+  variancia = c(var_bom, var_ruim),
+  estimador = rep(c("Proporção amostral  Var = p(1−p)/n",
+                    "Ponderado  Var ≈ 0.81·p(1−p)"), each = length(p_grid_var))
+)
+
+ggplot(df_var, aes(x = n, y = variancia, color = estimador)) +
+  geom_line(linewidth = 1.2) +
+  scale_color_manual(values = c("#003580", "#8B0000")) +
+  labs(
+    title  = "Variância Teórica dos Estimadores",
+    x      = "Tamanho da amostra (n)",
+    y      = "Variância",
+    color  = NULL
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "bottom")
+```
+
+---
+
+## 8. O Limite de Cramér-Rao: Ninguém Faz Melhor
+
+A pergunta agora é: existe algum estimador não-viesado com variância *ainda menor* do que $p(1-p)/n$?
+
+A resposta é **não**, e isso é o que o **Limite de Cramér-Rao** garante.
+
+### Informação de Fisher
+
+A **Informação de Fisher** $\mathcal{I}(p)$ mede o quanto uma única observação $X_i \sim \text{Bernoulli}(p)$ nos "informa" sobre $p$. Ela é definida como:
+
+$$\mathcal{I}(p) = E\!\left[\left(\frac{\partial}{\partial p} \ln f(X; p)\right)^{\!2}\right]$$
+
+Para a Bernoulli, $\ln f(x; p) = x \ln p + (1-x)\ln(1-p)$, portanto:
+
+$$\frac{\partial \ln f}{\partial p} = \frac{x}{p} - \frac{1-x}{1-p}$$
+
+Calculando a esperança ao quadrado (com $E[X] = p$ e $E[X^2] = p$):
+
+$$\mathcal{I}(p) = E\!\left[\left(\frac{X}{p} - \frac{1-X}{1-p}\right)^{\!2}\right] = \frac{1}{p(1-p)}$$
+
+Para uma amostra de tamanho $n$ (observações i.i.d.), a informação total se soma:
+
+$$\mathcal{I}_n(p) = n \cdot \mathcal{I}(p) = \frac{n}{p(1-p)}$$
+
+### O Limite
+
+O **Teorema de Cramér-Rao** estabelece que, para qualquer estimador não-viesado $T(\mathbf{X})$ de $p$,
+
+$$\text{Var}(T) \geq \frac{1}{\mathcal{I}_n(p)} = \frac{p(1-p)}{n}$$
+
+E a variância da proporção amostral é:
+
+$$\text{Var}(\hat{p}) = \text{Var}\!\left(\frac{X}{n}\right) = \frac{1}{n^2} \cdot n \cdot p(1-p) = \frac{p(1-p)}{n}$$
+
+A proporção amostral **atinge exatamente o limite inferior**. Nenhum estimador não-viesado pode ser mais preciso. Ela é o **estimador de variância uniformemente mínima (UMVUE)** para $p$.
+
+```{r}
+#| label: fig-cramer-rao
+#| fig-cap: "Variância da proporção amostral em relação ao limite de Cramér-Rao, para diferentes valores de p."
+
+p_vals <- c(0.1, 0.25, p_real, 0.5)
+n_seq  <- seq(5, 200, by = 5)
+
+df_cr <- do.call(rbind, lapply(p_vals, function(pv) {
+  data.frame(
+    n         = n_seq,
+    limite_cr = pv * (1 - pv) / n_seq,
+    var_phat  = pv * (1 - pv) / n_seq,
+    p_label   = paste0("p = ", round(pv, 3))
+  )
+}))
+
+ggplot(df_cr, aes(x = n, y = limite_cr, color = p_label)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(
+    data = df_cr %>% filter(n %in% c(10, 50, 100, 200)),
+    aes(x = n, y = var_phat),
+    shape = 21, fill = "white", size = 3
+  ) +
+  scale_color_manual(values = c("#003580", "#4A90D9", "#E05C5C", "#8B0000")) +
+  labs(
+    title    = "Limite de Cramér-Rao = Variância de p̂",
+    subtitle = "A proporção amostral atinge exatamente o limite inferior (pontos brancos = p̂, linhas = CR)",
+    x        = "Tamanho da amostra (n)",
+    y        = "Variância",
+    color    = NULL
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "bottom")
+```
+
+As linhas e os pontos coincidem exatamente: a proporção amostral *é* o limite de Cramér-Rao.
+
+---
+
+## 9. Toda a Informação em Uma Única Contagem
+
+O último resultado que queremos destacar é sobre **suficiência estatística**.
+
+### Teorema da Fatoração de Fisher-Neyman
+
+Uma estatística $T(\mathbf{X})$ é dita **suficiente** para $p$ se a verossimilhança puder ser fatorada como:
+
+$$L(p \mid \mathbf{x}) = g(T(\mathbf{x}), p) \cdot h(\mathbf{x})$$
+
+onde $h(\mathbf{x})$ não depende de $p$ e $g$ captura toda a dependência dos dados em $p$ através de $T$.
+
+Para o modelo Bernoulli, a verossimilhança é:
+
+$$L(p \mid \mathbf{x}) = p^x (1-p)^{n-x}$$
+
+onde $x = \sum x_i = T(\mathbf{X})$. Essa já é a fatoração: $g(T, p) = p^T(1-p)^{n-T}$ e $h(\mathbf{x}) = 1$.
+
+Portanto, a **contagem total de sucessos** $T = \sum_{i=1}^n X_i$ (ou equivalentemente a proporção $\hat{p} = T/n$) é uma **estatística suficiente** para $p$.
+
+### O que isso significa na prática?
+
+Toda a informação contida na sequência completa de $0$s e $1$s (a ordem em que os alunos foram entrevistados, quais foram os primeiros, etc.) está **completamente contida** na contagem final $x$. Saber que entrevistamos 60 alunos e 18 eram de Exatas contém *exatamente* a mesma informação estatística que a lista completa de respostas individuais.
+
+Isso justifica por que não precisamos armazenar nem processar os dados individuais para fazer inferência — a proporção amostral é um **resumo completo e sem perdas** dos dados.
+
+---
+
+## 10. Conclusão
+
+Começamos com uma pergunta simples — *qual é o melhor estimador para a proporção de mulheres em Exatas na UFJF?* — e chegamos a uma resposta completa e rigorosa.
+
+A **proporção amostral** $\hat{p} = x/n$ é o estimador ideal porque:
+
+| Propriedade | Resultado |
+|---|---|
+| **Não-viesado** | $E[\hat{p}] = p$ |
+| **Consistente** | $\hat{p} \xrightarrow{p} p$ quando $n \to \infty$ |
+| **Eficiente** | $\text{Var}(\hat{p}) = p(1-p)/n$ atinge o limite de Cramér-Rao |
+| **Suficiente** | $T = \sum X_i$ captura toda a informação da amostra sobre $p$ |
+| **MLE** | Maximiza a função de log-verossimilhança Bernoulli |
+
+Qualquer outro estimador não-viesado terá variância estritamente maior. O estimador ponderado do Instagram mostrou isso de forma concreta: ser não-viesado é necessário, mas longe de suficiente para garantir qualidade prática.
+
+A matemática aqui — verossimilhança, Lagrange, informação de Fisher — não é burocracia formal. Cada ferramenta responde a uma pergunta precisa:
+
+- *Qual valor de* $p$ *os dados apoiam mais?* → Verossimilhança.
+- *Como maximizar com restrições?* → Lagrange.
+- *Quanto informação a amostra carrega?* → Fisher.
+- *Qual o menor erro possível?* → Cramér-Rao.
+
+---
+
+*Dados: Observatório da UFJF — Ingressantes na Graduação (acesso público).*
+*Código disponível no repositório do projeto.*
