@@ -1,7 +1,7 @@
 ---
 title: "Por que a Proporção Amostral é o Melhor Estimador Possível?"
 subtitle: "Uma prova com log-verossimilhança, multiplicadores de Lagrange e o limite de Cramér-Rao"
-author: "Angelo dos Santos"
+author: "Angelo dos Santos e Geisielen Gomes"
 date: "2026-05-15"
 lang: pt
 format:
@@ -132,7 +132,8 @@ ggplot(dados_lv, aes(x = p, y = loglik, color = rotulo)) +
   annotate(
     "text",
     x = 0.32, y = -0.5,
-    label = expression(hat(p) == x/n == 0.30),
+    label = "hat(p) == frac(x, n) ~ '=' ~ 0.30",
+    parse = TRUE,
     hjust = 0, size = 3.8, color = "black"
   ) +
   coord_cartesian(ylim = c(-8, 0.3)) +
